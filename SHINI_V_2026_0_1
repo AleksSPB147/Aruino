@@ -87,7 +87,7 @@ void loop() {  // Основная логика программы:
   Reset.tick();        // Опрос кнопки Сброс
   timer_Motor.tick();  // Проверка таймера Мотора
   timer_Alarm.tick();  // Проверка таймера мигания
-//----------Конструкция switch-case----------------------
+                       //----------Конструкция switch-case----------------------
   switch (step) {
     case 0:
 
@@ -152,16 +152,23 @@ void loop() {  // Основная логика программы:
   }
 
   //----Обработка сброса----
-  if (Reset.press()) {
-    if (Reset_flag) {
-      Serial.println(F("Нажат сброс"));
-      Reset_flag = false;
-      timer_Alarm.stop();          // Останавливаем мигание, если флаг сброшен
-      digitalWrite(Alarm_Pin, 0);  // Гасим пин
-      flag_alarm = false;
-      step = 0;
-    }
-  }  //-------------------------
+  if (Reset.click()) {
+    Serial.println(F("Нажат сброс"));
+    timer_Alarm.stop();          // Останавливаем мигание, если флаг сброшен
+    digitalWrite(Alarm_Pin, 0);  // Гасим пин
+    flag_alarm = false;
+    step = 0;
+  }
+  // if (Reset.click()) {
+  //   if (Reset_flag) {
+  //     Serial.println(F("Нажат сброс"));
+  //     Reset_flag = false;
+  //     timer_Alarm.stop();          // Останавливаем мигание, если флаг сброшен
+  //     digitalWrite(Alarm_Pin, 0);  // Гасим пин
+  //     flag_alarm = false;
+  //     step = 0;
+  //   }
+  // }  //-------------------------
 }
 // --- Определение пользовательских функций (если есть) ---
 
