@@ -30,14 +30,15 @@ uint16_t Flap_TIME_MS = 3000UL;
 uint16_t Thermal_alarm = 100;  // Период мигания при Thermal_alarm (мс)
 uint16_t Flap_alarm = 1000;    // Период мигания при Flap_alarm (мс)
 uint8_t step = 0;              // Номер шага
-
-
-
+bool pusk_pause = false;
+int8_t val_flap = 0;         // Подсчет количества срабатываний заслонки
+bool flapSucceeded = false;  // Фиксируем успех в текущем цикле
 //-----Флаги----
 bool flag_Motor = 0;
-bool flag_alarm = false;      // Флаг для запуска мигания
+bool flag_alarm = false;      // Флаг "Авария" для перехода в шаг 10
 bool motorTimerDone = false;  // Флаг: таймер мотора сработал
-
+bool pauseTimeDone = false;   // Флаг: таймер пауза сработал
+//----Флаги для вывода текста----
 bool Seril_flag_1 = false;
 bool Seril_flag_2 = false;
 bool Seril_flag_3 = false;
@@ -46,8 +47,7 @@ bool Seril_flag_10 = false;
 bool Seril_flag_10_1 = false;
 bool Seril_flag_10_2 = false;
 bool Reset_flag = false;
-// ---- Прототипы функций (если используете свои функции) ----
-// void myFunction();
+// ----Прототипы функций----
 void Motor_pusk();
 void Pause_pusk();
 void alarmBlink();
@@ -80,35 +80,78 @@ void setup() {
 // === ФУНКЦИЯ loop() ===
 // Бесконечно повторяется, пока плата включена
 void loop() {  // Основная логика программы:
-  //---- Обязательный опрос ----
+  //----Обязательный опрос----
   Pusk.tick();         // Опрос кнопки Пуск
   Flap.tick();         // Опрос заслонки
   Thermal.tick();      // Опрос Термореле
   Reset.tick();        // Опрос кнопки Сброс
   timer_Motor.tick();  // Проверка таймера Мотора
+  timer_Pause.tick();
   timer_Alarm.tick();  // Проверка таймера мигания
-                       //----------Конструкция switch-case----------------------
+
+
+  if (Thermal.press()) {  // TRUE если сработало тепловое реле
+    Serial.println(F("Сработало тепловое реле. Переходим в шаг 10"));
+    flag_alarm = true;  // Включаем флаг "Авария"
+    digitalWrite(Motor_Pin, LOW);
+    step = 10;  // Переходим в шаг "Авария"
+  }
+  //----------Конструкция switch-case----------------------
   switch (step) {
     case 0:
 
-      if (Pusk.click()) {
-        Serial.println("Кнопка Пуск нажата! Запускаем мотор на 5 секунд...");
-        digitalWrite(Motor_Pin, 1);  // Включаем мотор
-        timer_Motor.start();         // Запускаем таймер
+      if (Pusk.click() || pusk_pause) {
+        Serial.print(F("Кнопка Пуск нажата! Запускаем мотор на  секунд"));
+        Serial.println(MOTOR_TIME_SEC);
+        digitalWrite(Motor_Pin, true);  // Включаем мотор
+        timer_Motor.start();            // Запускаем таймер
         step = 1;
       }
       break;
     case 1:
-      if (motorTimerDone) {
-        flag_alarm = true;
+      if (motorTimerDone) {  // Таймер timer_Motor сработал мотор отключился
+        Serial.println(F("Мотор отключился. Включился таймер Пауза"));
+        timer_Pause.start();
         motorTimerDone = false;
-        Seril_flag_10 = true;
-        step = 10;
+        // flag_alarm = true;
+
+        // Seril_flag_10 = true;
+        step = 2;
       }
       break;
 
     case 2:
-      // Логика шага 2
+
+      if (Flap.hold()) {
+        Serial.println(F("Заслонка отработала 3 сек"));
+        flapSucceeded = true;
+        val_flap = 0;
+      }
+      if (pauseTimeDone) {
+        Serial.println(F("Таймер Пауза сработал"));
+        if (!flapSucceeded) {
+          val_flap++;
+          Serial.print(F("Заслонка не сработала "));
+          Serial.println(val_flap);
+        } else {
+          Serial.println(F("Заслонка сработала"));
+          flapSucceeded = false;
+        }
+        if (val_flap >= 2) {
+          Seril_flag_10 = true;
+          flag_alarm = true;
+          step = 10;
+        } else {
+          step = 0;
+          pusk_pause = true;
+        }
+
+
+
+        pauseTimeDone = false;
+      }
+
+
       break;
 
     case 3:
@@ -119,9 +162,10 @@ void loop() {  // Основная логика программы:
       // Логика шага 4
       break;
     case 10:  // Шаг аварии
-      // Логика мигания в зависимости от флагов и состояний
-
+              // Логика мигания в зависимости от флагов и состояний
+      digitalWrite(Motor_Pin, LOW);
       if (Seril_flag_10) {
+
         Serial.println(F("Шаг 10"));
         Seril_flag_10 = false;
         Seril_flag_10_1 = true;
@@ -129,25 +173,17 @@ void loop() {  // Основная логика программы:
         Reset_flag = true;
       }
 
+
+      // В основном коде:
       if (flag_alarm) {
         if (Thermal.press()) {
-          if (Seril_flag_10_1) {
-            Serial.println(F("Шаг 10 Термореле"));
-            Seril_flag_10_1 = false;
-            timer_Alarm.start();
-            timer_Alarm.setTime(Thermal_alarm);  // Устанавливаем период мигания для Thermal_alarm
-          }
+          startAlarm(Thermal_alarm, F("Шаг 10 Термореле"));
+        }
+        if (val_flap >= 2) {
+          startAlarm(Flap_alarm, F("Шаг 10 Заслонка"));
         }
       }
-      if (Flap.press()) {
-        if (Seril_flag_10_2) {
-          Serial.println(F("Шаг 10 Заслонка"));
-          Seril_flag_10_2 = false;
-          timer_Alarm.start();
-          timer_Alarm.setTime(Flap_alarm);  // Устанавливаем период мигания для Thermal_alarm
-        }
-      }
-
+      
       break;
   }
 
@@ -157,6 +193,7 @@ void loop() {  // Основная логика программы:
     timer_Alarm.stop();          // Останавливаем мигание, если флаг сброшен
     digitalWrite(Alarm_Pin, 0);  // Гасим пин
     flag_alarm = false;
+    val_flap = 0;
     step = 0;
   }
   // if (Reset.click()) {
@@ -169,18 +206,27 @@ void loop() {  // Основная логика программы:
   //     step = 0;
   //   }
   // }  //-------------------------
+  //Serial.println(val_flap);
 }
 // --- Определение пользовательских функций (если есть) ---
 
 void Motor_pusk() {
-  Serial.println(F("Таймер Мотор: мотор ВЫКЛЮЧЕН через 10 секунд!"));
+  //Serial.println(F("Таймер Мотор: мотор ВЫКЛЮЧЕН через 10 секунд!"));
   digitalWrite(Motor_Pin, LOW);  // Выключаем мотор
   motorTimerDone = true;         // Устанавливаем флаг завершения таймера
 };
 
 void Pause_pusk() {
-  Serial.println("Таймер Пауза сработал!");
+  //Serial.println(F("Таймер Пауза сработал!"));
+  pauseTimeDone = true;
 };
 void alarmBlink() {
   digitalWrite(Alarm_Pin, !digitalRead(Alarm_Pin));  // Инвертируем состояние пина
 };
+void startAlarm(uint16_t period, const __FlashStringHelper* message) {  //uint16_t period — период мигания в миллисекундах (тип uint16_t означает 16‑битное беззнаковое целое, диапазон 0–65 535 мс);    const __FlashStringHelper* message — указатель на строку во Flash‑памяти (используется с макросом F() для экономии ОЗУ).
+  Serial.println(message);
+  timer_Alarm.setTime(period);
+  if (!timer_Alarm.running()) {  // Запускаем только если не запущен
+    timer_Alarm.start();         // запускает таймер
+  }
+}
