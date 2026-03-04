@@ -1,0 +1,179 @@
+/*
+Название проекта: [SHINI_V_2026_0_1]
+Дата: [04.03.2026]
+Автор: [RAV]
+Описание: [Практика оформления и применения кнопок, вызов и реализация работы таймеров, Switch]
+*/
+
+// --- Подключение библиотек ---
+#include <EncButton.h>
+#include <GTimer.h>
+
+
+// --- Объявление констант ---
+// const тип_данных ИМЯ_КОНСТАНТЫ = значение;
+
+const int Pusk_PIN = 5;     // Пин кнопки Пуск
+const int Flap_PIN = 6;     // Пин заслонки
+const int Reset_Pin = 7;    // Пин кнопки сброс
+const int Thermal_Pin = 8;  // Пин кнопки Термореле
+const int Motor_Pin = 12;   // Пин Мотора
+const int Alarm_Pin = 11;   // Пин Аварии
+
+// --- Объявление глобальных переменных ---
+uint16_t MOTOR_TIME_SEC = 10;
+uint16_t PAUSE_TIME_SEC = 5;
+uint16_t Flap_TIME_MS = 3000UL;
+
+//----Объявление переменных в коде----
+//----переменные мигания----
+uint16_t Thermal_alarm = 100;  // Период мигания при Thermal_alarm (мс)
+uint16_t Flap_alarm = 1000;    // Период мигания при Flap_alarm (мс)
+uint8_t step = 0;              // Номер шага
+
+
+
+//-----Флаги----
+bool flag_Motor = 0;
+bool flag_alarm = false;      // Флаг для запуска мигания
+bool motorTimerDone = false;  // Флаг: таймер мотора сработал
+
+bool Seril_flag_1 = false;
+bool Seril_flag_2 = false;
+bool Seril_flag_3 = false;
+bool Seril_flag_4 = false;
+bool Seril_flag_10 = false;
+bool Seril_flag_10_1 = false;
+bool Seril_flag_10_2 = false;
+bool Reset_flag = false;
+// ---- Прототипы функций (если используете свои функции) ----
+// void myFunction();
+void Motor_pusk();
+void Pause_pusk();
+void alarmBlink();
+// --- Создание объектов кнопок ---
+Button Pusk(Pusk_PIN);        // Создаем объект кнопки Пуск
+Button Flap(Flap_PIN);        // Создаем объект Заслонки
+Button Thermal(Thermal_Pin);  // Создаем объект Термореле
+Button Reset(Reset_Pin);      // Создаем обект кнопки Сброс
+// ---- Создание объектов таймеров ----
+GTimerCb<millis> timer_Motor(MOTOR_TIME_SEC * 1000UL, Motor_pusk, GTMode::Timeout);  // Таймер работы мотора
+GTimerCb<millis> timer_Pause(PAUSE_TIME_SEC * 1000UL, Pause_pusk, GTMode::Timeout);  // Таймер промежутка Паузы
+GTimerCb<millis> timer_Alarm(Thermal_alarm, alarmBlink, GTMode::Interval);           // Таймер для мигания
+
+// === ФУНКЦИЯ setup() ===
+// Выполняется один раз при включении/перезагрузке платы
+void setup() {
+  Serial.begin(9600);                 // Устанавливаем скорость последовательного порта 9600 бит/с
+  pinMode(Motor_Pin, OUTPUT);         // Устанавливаем пин мотора в режим выхода
+  pinMode(Alarm_Pin, OUTPUT);         // Устанавливаем пин сигнализации в режим выхода
+  Flap.setHoldTimeout(Flap_TIME_MS);  // удержание через 3 секунду
+  digitalWrite(Motor_Pin, 0);         // Изначально мотор выключен
+  digitalWrite(Alarm_Pin, 0);         // Изначально индикация Alarm выключена
+
+  // Явно останавливаем таймеры при старте
+  timer_Motor.stop();  // Переводим таймер Мотора в стоп
+  timer_Pause.stop();  // переводим таймер Паузы в стоп
+  timer_Alarm.stop();  // переводим таймер Alarm в стоп
+}
+
+// === ФУНКЦИЯ loop() ===
+// Бесконечно повторяется, пока плата включена
+void loop() {  // Основная логика программы:
+  //---- Обязательный опрос ----
+  Pusk.tick();         // Опрос кнопки Пуск
+  Flap.tick();         // Опрос заслонки
+  Thermal.tick();      // Опрос Термореле
+  Reset.tick();        // Опрос кнопки Сброс
+  timer_Motor.tick();  // Проверка таймера Мотора
+  timer_Alarm.tick();  // Проверка таймера мигания
+//----------Конструкция switch-case----------------------
+  switch (step) {
+    case 0:
+
+      if (Pusk.click()) {
+        Serial.println("Кнопка Пуск нажата! Запускаем мотор на 5 секунд...");
+        digitalWrite(Motor_Pin, 1);  // Включаем мотор
+        timer_Motor.start();         // Запускаем таймер
+        step = 1;
+      }
+      break;
+    case 1:
+      if (motorTimerDone) {
+        flag_alarm = true;
+        motorTimerDone = false;
+        Seril_flag_10 = true;
+        step = 10;
+      }
+      break;
+
+    case 2:
+      // Логика шага 2
+      break;
+
+    case 3:
+      // Логика шага 3
+      break;
+
+    case 4:
+      // Логика шага 4
+      break;
+    case 10:  // Шаг аварии
+      // Логика мигания в зависимости от флагов и состояний
+
+      if (Seril_flag_10) {
+        Serial.println(F("Шаг 10"));
+        Seril_flag_10 = false;
+        Seril_flag_10_1 = true;
+        Seril_flag_10_2 = true;
+        Reset_flag = true;
+      }
+
+      if (flag_alarm) {
+        if (Thermal.press()) {
+          if (Seril_flag_10_1) {
+            Serial.println(F("Шаг 10 Термореле"));
+            Seril_flag_10_1 = false;
+            timer_Alarm.start();
+            timer_Alarm.setTime(Thermal_alarm);  // Устанавливаем период мигания для Thermal_alarm
+          }
+        }
+      }
+      if (Flap.press()) {
+        if (Seril_flag_10_2) {
+          Serial.println(F("Шаг 10 Заслонка"));
+          Seril_flag_10_2 = false;
+          timer_Alarm.start();
+          timer_Alarm.setTime(Flap_alarm);  // Устанавливаем период мигания для Thermal_alarm
+        }
+      }
+
+      break;
+  }
+
+  //----Обработка сброса----
+  if (Reset.press()) {
+    if (Reset_flag) {
+      Serial.println(F("Нажат сброс"));
+      Reset_flag = false;
+      timer_Alarm.stop();          // Останавливаем мигание, если флаг сброшен
+      digitalWrite(Alarm_Pin, 0);  // Гасим пин
+      flag_alarm = false;
+      step = 0;
+    }
+  }  //-------------------------
+}
+// --- Определение пользовательских функций (если есть) ---
+
+void Motor_pusk() {
+  Serial.println(F("Таймер Мотор: мотор ВЫКЛЮЧЕН через 10 секунд!"));
+  digitalWrite(Motor_Pin, LOW);  // Выключаем мотор
+  motorTimerDone = true;         // Устанавливаем флаг завершения таймера
+};
+
+void Pause_pusk() {
+  Serial.println("Таймер Пауза сработал!");
+};
+void alarmBlink() {
+  digitalWrite(Alarm_Pin, !digitalRead(Alarm_Pin));  // Инвертируем состояние пина
+};
